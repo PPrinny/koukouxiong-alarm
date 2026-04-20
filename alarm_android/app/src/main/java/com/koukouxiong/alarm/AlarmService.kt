@@ -73,11 +73,31 @@ class AlarmService : Service() {
         webSocket?.close()
 
         try {
-            val wsUrl = if (!token.isNullOrEmpty()) {
-                "ws://$server:8766?token=$token"
-            } else {
-                "ws://$server:8766"
+            val wsUrl = when {
+                server.startsWith("ws://") || server.startsWith("wss://") -> {
+                    if (!token.isNullOrEmpty()) {
+                        val separator = if (server.contains("?")) "&" else "?"
+                        "$server${separator}token=$token"
+                    } else {
+                        server
+                    }
+                }
+                server.contains(":") -> {
+                    if (!token.isNullOrEmpty()) {
+                        "ws://$server?token=$token"
+                    } else {
+                        "ws://$server"
+                    }
+                }
+                else -> {
+                    if (!token.isNullOrEmpty()) {
+                        "wss://$server?token=$token"
+                    } else {
+                        "wss://$server"
+                    }
+                }
             }
+
             val uri = URI.create(wsUrl)
             webSocket = object : WebSocketClient(uri) {
                 override fun onOpen(handshake: ServerHandshake?) {
@@ -175,8 +195,8 @@ class AlarmService : Service() {
             val pattern = longArrayOf(0, 1000, 500, 1000, 500)
             try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-    vibrator?.vibrate(VibrationEffect.createWaveform(pattern, 0))
-} else {
+                    vibrator?.vibrate(VibrationEffect.createWaveform(pattern, 0))
+                } else {
                     @Suppress("DEPRECATION")
                     vibrator?.vibrate(pattern, 0)
                 }
@@ -198,19 +218,16 @@ class AlarmService : Service() {
         try {
             mediaPlayer?.stop()
             mediaPlayer?.release()
-        } catch (e: Exception) { /* ignore */ }
+        } catch (e: Exception) {}
         mediaPlayer = null
 
         try {
             vibrator?.cancel()
-        } catch (e: Exception) { /* ignore */ }
+        } catch (e: Exception) {}
 
-        if (isAlarmActive) {
-            try {
-                wakeLock?.release()
-            } catch (e: Exception) { /* ignore */ }
-            isAlarmActive = false
-        }
+        try {
+            wakeLock?.release()
+        } catch (e: Exception) {}
 
         currentAlarmId?.let { id ->
             try {
@@ -218,10 +235,11 @@ class AlarmService : Service() {
                     put("type", "alarm_stopped")
                     put("alarm_id", id)
                 }.toString())
-            } catch (e: Exception) { /* ignore */ }
+            } catch (e: Exception) {}
         }
 
         currentAlarmId = null
+        isAlarmActive = false
         updateNotification("服务运行中")
     }
 
