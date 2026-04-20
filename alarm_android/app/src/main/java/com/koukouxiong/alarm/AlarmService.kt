@@ -175,11 +175,8 @@ class AlarmService : Service() {
             val pattern = longArrayOf(0, 1000, 500, 1000, 500)
             try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    vibrator?.vibrate(
-                        VibrationEffect.createWaveform(pattern, 0),
-                        VibrationEffect.createAttributesForUsage(VibrationEffect.USAGE_ALARM)
-                    )
-                } else {
+    vibrator?.vibrate(VibrationEffect.createWaveform(pattern, 0))
+} else {
                     @Suppress("DEPRECATION")
                     vibrator?.vibrate(pattern, 0)
                 }
