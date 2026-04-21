@@ -73,7 +73,9 @@ class AlarmService : Service() {
         webSocket?.close()
 
         try {
+            // 智能判断URL格式
             val wsUrl = when {
+                // 如果已经包含协议前缀，直接使用
                 server.startsWith("ws://") || server.startsWith("wss://") -> {
                     if (!token.isNullOrEmpty()) {
                         val separator = if (server.contains("?")) "&" else "?"
@@ -82,6 +84,7 @@ class AlarmService : Service() {
                         server
                     }
                 }
+                // 如果包含端口号（有冒号），使用ws://协议
                 server.contains(":") -> {
                     if (!token.isNullOrEmpty()) {
                         "ws://$server?token=$token"
@@ -89,6 +92,7 @@ class AlarmService : Service() {
                         "ws://$server"
                     }
                 }
+                // 否则使用wss://协议（穿透域名）
                 else -> {
                     if (!token.isNullOrEmpty()) {
                         "wss://$server?token=$token"
@@ -121,158 +125,4 @@ class AlarmService : Service() {
 
                 override fun onError(ex: Exception?) {
                     isConnected = false
-                    updateNotification("连接错误: ${ex?.message}")
-                }
-            }
-            webSocket?.connect()
-        } catch (e: Exception) {
-            e.printStackTrace()
-            updateNotification("连接失败: ${e.message}")
-        }
-    }
-
-    private fun verifySignature(data: JSONObject): Boolean {
-        val token = authToken ?: return false
-        val sig = data.optString("signature", null) ?: return false
-        val payload = "${data.optString("type", "")}|${data.optString("alarm_id", "")}|${data.optString("message", "")}|${data.optString("timestamp", "")}"
-        return try {
-            val keySpec = SecretKeySpec(token.toByteArray(), "HmacSHA256")
-            val mac = Mac.getInstance("HmacSHA256")
-            mac.init(keySpec)
-            val hash = mac.doFinal(payload.toByteArray()).joinToString("") { "%02x".format(it) }
-            hash == sig
-        } catch (e: Exception) {
-            false
-        }
-    }
-
-    private fun handleMessage(message: String) {
-        try {
-            val json = JSONObject(message)
-            if (!verifySignature(json)) {
-                return
-            }
-            when (json.getString("type")) {
-                "alarm" -> {
-                    currentAlarmId = json.getString("alarm_id")
-                    val msg = json.optString("message", "时间到了")
-                    startAlarm(msg)
-                }
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
-    private fun startAlarm(message: String) {
-        if (!isAlarmActive) {
-            wakeLock?.acquire(10 * 60 * 1000L)
-            isAlarmActive = true
-        }
-
-        try {
-            val alarmUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-                ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-
-            mediaPlayer?.release()
-            mediaPlayer = MediaPlayer().apply {
-                setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_ALARM)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                        .build()
-                )
-                setDataSource(this@AlarmService, alarmUri)
-                isLooping = true
-                prepare()
-                start()
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-
-        if (vibrator?.hasVibrator() == true) {
-            val pattern = longArrayOf(0, 1000, 500, 1000, 500)
-            try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    vibrator?.vibrate(VibrationEffect.createWaveform(pattern, 0))
-                } else {
-                    @Suppress("DEPRECATION")
-                    vibrator?.vibrate(pattern, 0)
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-
-        val intent = Intent(this, AlarmActivity::class.java).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
-            putExtra("message", message)
-            putExtra("alarm_id", currentAlarmId)
-        }
-        startActivity(intent)
-    }
-
-    private fun stopAlarmInternal() {
-        try {
-            mediaPlayer?.stop()
-            mediaPlayer?.release()
-        } catch (e: Exception) {}
-        mediaPlayer = null
-
-        try {
-            vibrator?.cancel()
-        } catch (e: Exception) {}
-
-        try {
-            wakeLock?.release()
-        } catch (e: Exception) {}
-
-        currentAlarmId?.let { id ->
-            try {
-                webSocket?.send(JSONObject().apply {
-                    put("type", "alarm_stopped")
-                    put("alarm_id", id)
-                }.toString())
-            } catch (e: Exception) {}
-        }
-
-        currentAlarmId = null
-        isAlarmActive = false
-        updateNotification("服务运行中")
-    }
-
-    private fun createNotification(text: String): Notification {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                "alarm_service",
-                "提醒服务",
-                NotificationManager.IMPORTANCE_LOW
-            )
-            val nm = getSystemService(NotificationManager::class.java)
-            nm.createNotificationChannel(channel)
-        }
-
-        return NotificationCompat.Builder(this, "alarm_service")
-            .setContentTitle("扣扣熊提醒")
-            .setContentText(text)
-            .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-            .setOngoing(true)
-            .build()
-    }
-
-    private fun updateNotification(text: String) {
-        val nm = getSystemService(NotificationManager::class.java)
-        nm.notify(1, createNotification(text))
-    }
-
-    override fun onBind(intent: Intent?): IBinder? = null
-
-    override fun onDestroy() {
-        super.onDestroy()
-        instance = null
-        webSocket?.close()
-        stopAlarmInternal()
-    }
-}
+                    upd
